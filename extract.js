@@ -24,7 +24,7 @@ function findInteres(text){
   return m ? String(m[1]).trim().slice(0,120) : "";
 }
 
-// Formato: KEY *   (o KEY:) y valor en la línea siguiente
+// KEY* (o KEY:) y el valor en la línea siguiente
 function parseKeyNextValue(text){
   const lines = String(text||"")
     .split(/\r?\n/)
@@ -55,7 +55,7 @@ function parseKeyNextValue(text){
   return map;
 }
 
-// Formato: "Nombres: ARLETTE SANIRI" (valor en la misma línea)
+// "Nombres: ARLETTE SANIRI" (valor en misma línea)
 function parseInlineColonPairs(text){
   const lines = String(text||"").split(/\r?\n/).map(l => l.trim());
   const map = {};

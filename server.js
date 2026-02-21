@@ -4,7 +4,7 @@ require("express-async-errors");
 const express = require("express");
 const path = require("path");
 const CFG = require("./sell_config");
-const { getCustomFields, searchContacts, findContactForDedupe, createContact, createDeal, contactUrl } = require("./sell");
+const { getCustomFields, searchContacts, findContactForDedupe, createContact, createDeal, dealUrl, contactUrl } = require("./sell");
 const {
   findEmail, findPhone, findRUT, findIMC, findInteres,
   parseKeyNextValue, parseInlineColonPairs, mergeMaps,
@@ -95,11 +95,9 @@ app.get("/api/contacts/search", async (req, res) => {
 });
 
 async function getFieldDefs() {
-  // usa cache si existe
-  const opts = cache.data || (await (await fetch("http://localhost/")).json().catch(()=>null)); // no se usa realmente
-  // mejor: obtener defs directas
   const dealCF = await getCustomFields("deal");
   const contactCF = await getCustomFields("contact");
+
   const dealItems = (dealCF?.items || []).map(x => x.data).filter(Boolean);
   const contactItems = (contactCF?.items || []).map(x => x.data).filter(Boolean);
 
@@ -196,6 +194,7 @@ app.post("/api/extract", async (req, res) => {
   if (!text.trim()) return res.status(400).json({ error: "text requerido" });
 
   const defs = await getFieldDefs();
+
   const mapA = parseKeyNextValue(text);
   const mapB = parseInlineColonPairs(text);
   const map = mergeMaps(mapA, mapB);
@@ -254,7 +253,6 @@ app.post("/api/extract", async (req, res) => {
     tramo_choice_id: tramo ? tramo.id : null,
     prevision_choice_id: prev ? prev.id : null
   });
-
 });
 
 app.use((err, req, res, next) => {
