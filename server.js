@@ -1,8 +1,15 @@
+require("dotenv").config();
+require("express-async-errors");
+
 const express = require("express");
 const path = require("path");
 const CFG = require("./sell_config");
 const { getCustomFields, searchContacts, findContactForDedupe, createContact, createDeal, contactUrl } = require("./sell");
-const { findEmail, findPhone, findRUT, findIMC, findInteres, guessName, splitName, matchChoiceByName } = require("./extract");
+const {
+  findEmail, findPhone, findRUT, findIMC, findInteres,
+  parseKeyNextValue, parseInlineColonPairs, mergeMaps,
+  splitNameFromMap, matchChoiceByName
+} = require("./extract");
 
 const app = express();
 app.use(express.json({ limit: "600kb" }));
@@ -189,34 +196,70 @@ app.post("/api/extract", async (req, res) => {
   if (!text.trim()) return res.status(400).json({ error: "text requerido" });
 
   const defs = await getFieldDefs();
+  const mapA = parseKeyNextValue(text);
+  const mapB = parseInlineColonPairs(text);
+  const map = mergeMaps(mapA, mapB);
 
-  const email = findEmail(text);
-  const phone = findPhone(text);
-  const rut = findRUT(text);
-  const imc = findIMC(text);
-  const interes = findInteres(text);
+  const email =
+    findEmail(text) ||
+    map["correo electrónico"] || map["correo electronico"] || map["email"] || map["correo"] || "";
 
-  const fullName = guessName(text);
-  const { first_name, last_name } = splitName(fullName);
+  const phone =
+    findPhone(text) ||
+    map["teléfono 1"] || map["telefono 1"] ||
+    map["número de móvil"] || map["numero de movil"] ||
+    map["móvil"] || map["movil"] ||
+    map["teléfono"] || map["telefono"] || "";
+
+  const rut =
+    findRUT(text) ||
+    map["run"] || map["rut"] || map["run / rut"] || "";
+
+  const imc =
+    findIMC(text) ||
+    map["imc"] || "";
+
+  const interes =
+    findInteres(text) ||
+    map["interés"] || map["interes"] || "";
+
+  const { first_name, last_name } = splitNameFromMap(map);
+
+  const address_line1 =
+    map["dirección"] || map["direccion"] || map["calle"] || "";
+
+  const city =
+    map["comuna"] || map["ciudad"] || map["lugar de residencia"] || "";
 
   const cir = matchChoiceByName(defs.dealCirujano?.choices, text);
-  const tramo = matchChoiceByName(defs.dealTramo?.choices, text);
-  const prev = matchChoiceByName(defs.contactPrevision?.choices, text);
+  const tramo = matchChoiceByName(defs.dealTramo?.choices, (map["modalidad"] || text));
+  const prev = matchChoiceByName(defs.contactPrevision?.choices, (map["aseguradora"] || map["previsión"] || map["prevision"] || text));
+
+  const fullName = `${first_name} ${last_name}`.trim();
+  const deal_name = fullName ? `Bariatría - ${fullName}` : "";
 
   res.json({
-    email,
+    email: String(email).trim(),
     mobile: phone,
     phone: phone,
-    rut,
-    imc,
-    interes,
+    rut: String(rut).trim(),
+    imc: String(imc).trim(),
+    interes: String(interes).trim(),
     first_name,
     last_name,
-    deal_name: fullName ? `Bariatría - ${fullName}` : "",
+    address_line1,
+    city,
+    deal_name,
     cirujano_choice_id: cir ? cir.id : null,
     tramo_choice_id: tramo ? tramo.id : null,
     prevision_choice_id: prev ? prev.id : null
   });
+
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: err.message || "Error" });
 });
 
 const port = process.env.PORT || 3000;

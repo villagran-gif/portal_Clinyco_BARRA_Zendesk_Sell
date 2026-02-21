@@ -1,3 +1,5 @@
+function norm(s){ return String(s||"").trim(); }
+
 function findEmail(text){
   const m = String(text||"").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   return m ? m[0] : "";
@@ -21,18 +23,69 @@ function findInteres(text){
   const m = String(text||"").match(/\bInter[eé]s\b\s*[:=]\s*([^\n\r]+)/i);
   return m ? String(m[1]).trim().slice(0,120) : "";
 }
-function guessName(text){
-  const m = String(text||"").match(/\b(Nombre|Paciente)\b\s*[:=]\s*([^\n\r]+)/i);
-  if (!m) return "";
-  return String(m[2]).trim().replace(/\s+/g," ").slice(0,80);
+
+// Formato: KEY *   (o KEY:) y valor en la línea siguiente
+function parseKeyNextValue(text){
+  const lines = String(text||"")
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(l => l.length);
+
+  const map = {};
+  for (let i=0;i<lines.length;i++){
+    const line = lines[i];
+
+    const keyLine =
+      /[*:]$/.test(line) ||
+      /^(run|rut|run\s*\/\s*rut|nombres?|apellidos?|correo|correo electr[oó]nico|email|tel[eé]fono|m[oó]vil|celular|direcci[oó]n|calle|comuna|ciudad|aseguradora|previsi[oó]n|modalidad|tramo\/modalidad|imc|inter[eé]s|lugar de residencia)\b/i.test(line);
+
+    if (!keyLine) continue;
+
+    const key = line
+      .replace(/\*+$/,"")
+      .replace(/:$/,"")
+      .trim()
+      .toLowerCase();
+
+    const val = lines[i+1] ? lines[i+1].trim() : "";
+    if (!val) continue;
+
+    if (!(key in map)) map[key] = val;
+  }
+  return map;
 }
-function splitName(full){
-  const s = String(full||"").trim().replace(/\s+/g," ");
-  if (!s) return { first_name:"", last_name:"" };
-  const p = s.split(" ");
-  if (p.length === 1) return { first_name:"", last_name:p[0] };
-  return { first_name:p.slice(0,-1).join(" "), last_name:p.at(-1) };
+
+// Formato: "Nombres: ARLETTE SANIRI" (valor en la misma línea)
+function parseInlineColonPairs(text){
+  const lines = String(text||"").split(/\r?\n/).map(l => l.trim());
+  const map = {};
+  for (const line of lines){
+    const m = line.match(/^([^:]{2,40}):\s*(.+)$/);
+    if (!m) continue;
+    const key = m[1].trim().toLowerCase();
+    const val = m[2].trim();
+    if (!val) continue;
+    if (!(key in map)) map[key] = val;
+  }
+  return map;
 }
+
+function mergeMaps(a,b){
+  const out = { ...(a||{}) };
+  for (const [k,v] of Object.entries(b||{})){
+    if (!(k in out) && v) out[k]=v;
+  }
+  return out;
+}
+
+function splitNameFromMap(map){
+  const nombres =
+    map["nombres"] || map["nombre"] || map["primer nombre"] || map["first name"] || "";
+  const apellidos =
+    map["apellidos"] || map["apellido"] || map["last name"] || "";
+  return { first_name: norm(nombres), last_name: norm(apellidos) };
+}
+
 function matchChoiceByName(choices, text){
   const up = String(text||"").toUpperCase();
   for (const c of choices || []) {
@@ -46,4 +99,9 @@ function matchChoiceByName(choices, text){
   }
   return null;
 }
-module.exports = { findEmail, findPhone, findRUT, findIMC, findInteres, guessName, splitName, matchChoiceByName };
+
+module.exports = {
+  findEmail, findPhone, findRUT, findIMC, findInteres,
+  parseKeyNextValue, parseInlineColonPairs, mergeMaps,
+  splitNameFromMap, matchChoiceByName
+};
