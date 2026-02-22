@@ -54,7 +54,8 @@ async function searchV3(index, { queryFilter, projectionNames = [], per_page = 1
   };
 
   const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
-  return (r?.items?.[0]?.items || []).map((x) => x.data).filter(Boolean);
+  const bucket = r?.items?.[0];
+  return (bucket?.items || []).map((x) => x.data).filter(Boolean);
 }
 
 async function searchContactsByRutNorm(rutNorm) {
