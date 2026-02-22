@@ -28,8 +28,17 @@
   async function api(path, opts={}){
     const res = await fetch(path, { ...opts, headers: { ...apiHeaders(), ...(opts.headers||{}) } });
     const data = await res.json().catch(()=> ({}));
-    if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+    if (!res.ok) { const err = new Error(data?.error || `Error ${res.status}`); err.status = res.status; err.data = data; throw err; }
     return data;
+  }
+
+
+  function looksLikeRut(value){
+    const q = String(value || "").trim();
+    if (!q) return false;
+    if (/[.-]/.test(q)) return true;
+    const compact = q.replace(/\s+/g, "");
+    return compact.length >= 8 && /^[0-9kK]+$/.test(compact) && /\d/.test(compact);
   }
 
   // config + leads button
@@ -65,8 +74,18 @@
 
   // -------- VIEW 1: search contacts ----------
   $("searchBtn").addEventListener("click", async () => {
-    const q = $("searchQ").value.trim();
-    $("status1").textContent = "Buscando...";
+    const qTop = $("searchQ").value.trim();
+    const qRut = $("rut1") ? $("rut1").value.trim() : "";
+    const q = qTop || qRut;
+
+    if (!looksLikeRut(q)) {
+      $("status1").textContent = "Ingresa un RUT válido (ej: 12.345.678-9)";
+      $("status1").className = "status warn";
+      $("contactSelect").disabled = true;
+      $("contactSelect").innerHTML = `<option value="">Primero ingresa RUT...</option>`;
+      return;
+    }
+    $("status1").textContent = "Buscando por RUT...";
     $("status1").className = "status";
     $("contactSelect").disabled = true;
     $("contactSelect").innerHTML = `<option value="">Buscando...</option>`;
@@ -89,7 +108,7 @@
       $("status1").className = "status ok";
     }catch(e){
       $("contactSelect").innerHTML = `<option value="">Error</option>`;
-      $("status1").textContent = e.message;
+      $("status1").textContent = e.data ? (e.message + "\n" + JSON.stringify(e.data,null,2)) : e.message;
       $("status1").className = "status err";
     }
   });
@@ -127,7 +146,7 @@
       $("status1").textContent = `✅ OK. deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status1").className = "status ok";
     }catch(e){
-      $("status1").textContent = e.message;
+      $("status1").textContent = e.data ? (e.message + "\n" + JSON.stringify(e.data,null,2)) : e.message;
       $("status1").className = "status err";
     }
   });
@@ -171,7 +190,7 @@
       $("status2").textContent = `✅ OK. contact_id=${r.contact_id} deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status2").className = "status ok";
     }catch(e){
-      $("status2").textContent = e.message;
+      $("status2").textContent = e.data ? (e.message + "\n" + JSON.stringify(e.data,null,2)) : e.message;
       $("status2").className = "status err";
     }
   });
@@ -258,7 +277,7 @@
       $("status5").textContent = `✅ OK. contact_id=${r.contact_id} deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status5").className = "status ok";
     }catch(e){
-      $("status5").textContent = e.message;
+      $("status5").textContent = e.data ? (e.message + "\n" + JSON.stringify(e.data,null,2)) : e.message;
       $("status5").className = "status err";
     }
   });
