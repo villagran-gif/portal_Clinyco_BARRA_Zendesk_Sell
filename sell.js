@@ -8,21 +8,24 @@ function mustToken() {
   return t;
 }
 
-async function sellFetch(path, { method="GET", body } = {}) {
-  const url = `${SELL_API_BASE}${path}`;
-  const res = await fetch(url, {
+async function sellFetch(path, { method = "GET", body } = {}) {
+  const res = await fetch(`${SELL_API_BASE}${path}`, {
     method,
     headers: {
-      "Accept": "application/json",
+      Accept: "application/json",
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${mustToken()}`
+      Authorization: `Bearer ${mustToken()}`
     },
     body: body ? JSON.stringify(body) : undefined
   });
 
   const text = await res.text();
-  let json = null;
-  try { json = text ? JSON.parse(text) : null; } catch { json = { raw: text }; }
+  let json;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = { raw: text };
+  }
 
   if (!res.ok) {
     const msg = json?.errors ? JSON.stringify(json.errors) : (json?.message || text || "");
@@ -31,91 +34,163 @@ async function sellFetch(path, { method="GET", body } = {}) {
     err.details = json;
     throw err;
   }
+
   return json;
 }
 
+// Sanea projection: NO null/undefined, y siempre {name:"..."}
+function normalizeProjection(projection) {
+  if (!projection) return undefined;
+
+  // acepta: ["name","stage_id"] o [{name:"name"}, ...]
+  const list = Array.isArray(projection) ? projection : [projection];
+
+  const clean = list
+    .map((p) => {
+      if (!p) return null;                 // evita null/undefined
+      if (typeof p === "string") {
+        const name = p.trim();
+        return name ? { name } : null;     // evita ""
+      }
+      if (typeof p === "object") {
+        const name = String(p.name || "").trim();
+        return name ? { name } : null;
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  return clean.length ? clean : undefined;
+}
+
+/**
+ * Search API v3 (batch)
+ * OJO: per_page VA dentro de data (no al lado).
+ */
+async function searchV3(index, { filter, projection, per_page = 100 } = {}) {
+  const query = {};
+  if (filter) query.filter = filter;
+
+  const proj = normalizeProjection(projection);
+  if (proj) query.projection = proj;
+
+  const body = {
+    items: [
+      {
+        data: {
+          query,
+          per_page
+        }
+      }
+    ]
+  };
+
+  if (String(process.env.SELL_DEBUG || "false") === "true") {
+    console.log(`[SELL_DEBUG] POST /v3/${index}/search body=`, JSON.stringify(body));
+  }
+
+  const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
+  const bucket = r?.items?.[0];
+
+  if (!bucket) return [];
+
+  if (bucket.successful === false) {
+    const err = new Error(
+      `Sell Search v3 ${index} failed: ${JSON.stringify(bucket.errors || [])}`.slice(0, 900)
+    );
+    err.details = bucket;
+    throw err;
+  }
+
+  return (bucket.items || []).map((x) => x.data).filter(Boolean);
+}
+
+async function searchContactsByRutNorm(rutNorm) {
+  return searchV3("contacts", {
+    filter: {
+      attribute: { name: `custom_fields.contact:${CFG.contact.RUT_NORMALIZADO_ID}` },
+      parameter: { eq: String(rutNorm) }
+    },
+    // campos que usas en UI
+    projection: ["display_name"],
+    per_page: 50
+  });
+}
+
+async function searchDealsByRutInStages(rutNorm, stageIds = []) {
+  return searchV3("deals", {
+    filter: {
+      and: [
+        {
+          attribute: { name: `custom_fields.${CFG.deal.RUT_NORMALIZADO_ID}` },
+          parameter: { eq: String(rutNorm) }
+        },
+        {
+          attribute: { name: "stage_id" },
+          parameter: { any: stageIds.map(Number) }
+        }
+      ]
+    },
+    // campos que usas para mostrar duplicados
+    projection: ["name", "stage_id"],
+    per_page: 50
+  });
+}
+
+async function getStagesByPipeline(pipelineId) {
+  const r = await sellFetch(
+    `/v2/stages?pipeline_id=${encodeURIComponent(pipelineId)}&sort_by=position&per_page=100`
+  );
+  return (r?.items || []).map((x) => x.data).filter(Boolean);
+}
+
 async function getCustomFields(resourceType) {
-  // resourceType: "deal" | "contact" | "lead"
   return sellFetch(`/v2/${resourceType}/custom_fields`);
 }
 
 function choiceObject(fieldDef, choiceId) {
-  const c = (fieldDef?.choices || []).find(x => Number(x.id) === Number(choiceId));
-  if (!c) return null;
-  return { id: Number(c.id), name: c.name };
-}
-
-async function searchContacts(q) {
-  const query = String(q || "").trim();
-  if (!query) return [];
-  const perPage = 20;
-
-  // email
-  if (query.includes("@")) {
-    const r = await sellFetch(`/v2/contacts?email=${encodeURIComponent(query)}&per_page=${perPage}`);
-    return (r?.items || []).map(x => x.data).filter(Boolean);
-  }
-
-  // phone first
-  let r = await sellFetch(`/v2/contacts?phone=${encodeURIComponent(query)}&per_page=${perPage}`);
-  let items = (r?.items || []).map(x => x.data).filter(Boolean);
-  if (items.length) return items;
-
-  // then mobile
-  r = await sellFetch(`/v2/contacts?mobile=${encodeURIComponent(query)}&per_page=${perPage}`);
-  items = (r?.items || []).map(x => x.data).filter(Boolean);
-  return items;
-}
-
-async function findContactForDedupe({ email, phone, mobile }) {
-  if (email) {
-    const r = await sellFetch(`/v2/contacts?email=${encodeURIComponent(email)}&per_page=1`);
-    const c = r?.items?.[0]?.data;
-    if (c?.id) return c;
-  }
-  if (phone) {
-    const r = await sellFetch(`/v2/contacts?phone=${encodeURIComponent(phone)}&per_page=1`);
-    const c = r?.items?.[0]?.data;
-    if (c?.id) return c;
-  }
-  if (mobile) {
-    const r = await sellFetch(`/v2/contacts?mobile=${encodeURIComponent(mobile)}&per_page=1`);
-    const c = r?.items?.[0]?.data;
-    if (c?.id) return c;
-  }
-  return null;
+  const c = (fieldDef?.choices || []).find((x) => Number(x.id) === Number(choiceId));
+  return c ? { id: Number(c.id), name: c.name } : null;
 }
 
 function tagsFromEnv() {
   return (process.env.DEAL_TAGS || "portal,clinyco")
-    .split(",").map(s => s.trim()).filter(Boolean);
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
-function dealUrl(id){
-  const base = process.env.SELL_DEAL_URL_BASE || "";
-  if (!base || !id) return "";
-  return `${base.replace(/\/$/,"")}/${id}`;
-}
-function contactUrl(id){
-  const base = process.env.SELL_CONTACT_URL_BASE || "";
-  if (!base || !id) return "";
-  return `${base.replace(/\/$/,"")}/${id}`;
-}
+function links(type, id) {
+  const cleanId = Number(id);
+  if (!cleanId) return { web: "", mobile: "" };
 
-async function createContact(payload, { previsionFieldDef } = {}) {
-  const custom_fields = {};
-  custom_fields[String(CFG.contact.RUT_ID)] = payload.rut;
-  custom_fields[String(CFG.contact.CIUDAD_ID)] = payload.address_city;
-  custom_fields[String(CFG.contact.TELEFONO_ID)] = payload.phone;
-  custom_fields[String(CFG.contact.CORREO_ID)] = payload.email2;
+  const webDealBase = process.env.SELL_DEAL_URL_BASE || "https://clinyco.zendesk.com/sales/deals";
+  const webContactBase = process.env.SELL_CONTACT_URL_BASE || "https://clinyco.zendesk.com/sales/contacts";
+  const mobileDealBase = process.env.SELL_DEAL_MOBILE_URL_BASE || "https://app.futuresimple.com/sales/deals";
+  const mobileContactBase = process.env.SELL_CONTACT_MOBILE_URL_BASE || "https://app.futuresimple.com/crm/contacts";
 
-  if (payload.prevision_choice_id && previsionFieldDef) {
-    const v = choiceObject(previsionFieldDef, payload.prevision_choice_id);
-    if (v) custom_fields[String(CFG.contact.PREVISION_ID)] = v;
+  if (type === "deal") {
+    return {
+      web: `${webDealBase.replace(/\/$/, "")}/${cleanId}`,
+      mobile: `${mobileDealBase.replace(/\/$/, "")}/${cleanId}`
+    };
   }
 
-  if (payload.agente) custom_fields[String(CFG.contact.AGENTE_ID)] = payload.agente;
+  return {
+    web: `${webContactBase.replace(/\/$/, "")}/${cleanId}`,
+    mobile: `${mobileContactBase.replace(/\/$/, "")}/${cleanId}`
+  };
+}
 
+function dealUrl(id) {
+  return links("deal", id).web;
+}
+
+function contactUrl(id) {
+  return links("contact", id).web;
+}
+
+async function createContact(payload) {
   const body = {
     data: {
       is_organization: false,
@@ -126,65 +201,56 @@ async function createContact(payload, { previsionFieldDef } = {}) {
       phone: payload.phone,
       address: { line1: payload.address_line1, city: payload.address_city },
       tags: tagsFromEnv(),
-      custom_fields
+      custom_fields: payload.custom_fields || {}
     },
     meta: { type: "contact" }
   };
-
-  const r = await sellFetch("/v2/contacts", { method:"POST", body });
+  const r = await sellFetch("/v2/contacts", { method: "POST", body });
   return r?.data;
 }
 
-async function createDeal(payload, { contactId, cirujanoFieldDef, tramoFieldDef } = {}) {
-  const custom_fields = {};
-  custom_fields[String(CFG.deal.RUT_ID)] = payload.rut;
+async function updateContact(contactId, payload) {
+  const body = {
+    data: {
+      ...(payload.email ? { email: payload.email } : {}),
+      ...(payload.mobile ? { mobile: payload.mobile } : {}),
+      ...(payload.phone ? { phone: payload.phone } : {}),
+      ...(payload.custom_fields ? { custom_fields: payload.custom_fields } : {})
+    },
+    meta: { type: "contact" }
+  };
+  const r = await sellFetch(`/v2/contacts/${Number(contactId)}`, { method: "PUT", body });
+  return r?.data;
+}
 
-  if (payload.cirujano_choice_id && cirujanoFieldDef) {
-    const v = choiceObject(cirujanoFieldDef, payload.cirujano_choice_id);
-    if (v) custom_fields[String(CFG.deal.CIRUJANO_ID)] = v;
-  }
-
-  // IMC: llenar string + number
-  const imcRaw = String(payload.imc || "").trim().replace(",", ".");
-  if (imcRaw) {
-    custom_fields[String(CFG.deal.IMC_TEXT_ID)] = imcRaw;
-    const n = Number(imcRaw);
-    if (Number.isFinite(n)) custom_fields[String(CFG.deal.IMC_NUM_ID)] = n.toFixed(2);
-  }
-
-  custom_fields[String(CFG.deal.INTERES_ID)] = payload.interes;
-
-  if (payload.tramo_choice_id && tramoFieldDef) {
-    const v = choiceObject(tramoFieldDef, payload.tramo_choice_id);
-    if (v) custom_fields[String(CFG.deal.TRAMO_ID)] = v;
-  }
-
-  if (payload.url_medinet) {
-    custom_fields[String(CFG.deal.URL_MEDINET_ID)] = payload.url_medinet;
-  }
-
+async function createDeal(payload, { contactId, stageId } = {}) {
   const body = {
     data: {
       name: payload.deal_name,
       contact_id: Number(contactId),
+      stage_id: Number(stageId),
       tags: tagsFromEnv(),
       ...(process.env.DEFAULT_CURRENCY ? { currency: process.env.DEFAULT_CURRENCY } : {}),
-      ...(process.env.DEAL_STAGE_ID ? { stage_id: Number(process.env.DEAL_STAGE_ID) } : {}),
       ...(process.env.DEAL_OWNER_ID ? { owner_id: Number(process.env.DEAL_OWNER_ID) } : {}),
-      custom_fields
+      custom_fields: payload.custom_fields || {}
     },
     meta: { type: "deal" }
   };
-
-  const r = await sellFetch("/v2/deals", { method:"POST", body });
+  const r = await sellFetch("/v2/deals", { method: "POST", body });
   return { data: r?.data, url: dealUrl(r?.data?.id) };
 }
 
 module.exports = {
+  sellFetch,
+  searchV3,
+  searchContactsByRutNorm,
+  searchDealsByRutInStages,
+  getStagesByPipeline,
   getCustomFields,
-  searchContacts,
-  findContactForDedupe,
+  choiceObject,
+  links,
   createContact,
+  updateContact,
   createDeal,
   dealUrl,
   contactUrl

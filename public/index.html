@@ -4,13 +4,13 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Portal Clínyco</title>
-  <link rel="stylesheet" href="/app.css"/>
+  <link rel="stylesheet" href="app.css"/>
 </head>
 <body>
   <main class="wrap">
     <header class="brand">
       <!-- Pon tu logo aquí: public/assets/logo_clinyco.png -->
-      <img class="logo" src="/assets/logo_clinyco.png" alt="Clínyco"/>
+      <img class="logo" src="assets/logo_clinyco.png" alt="Clínyco"/>
     </header>
 
     <section class="card">
@@ -34,8 +34,8 @@
         <h2>1) Crear trato (contacto ya existe)</h2>
 
         <div class="grid two">
-          <label class="req">Buscar contacto (email o teléfono)
-            <input id="searchQ" placeholder="correo@dominio.com o +569..." />
+          <label class="req">Buscar contacto (RUT o ID)
+            <input id="searchQ" placeholder="Ej: 13.580.388-K" />
           </label>
           <label class="req">Seleccionar contacto encontrado
             <select id="contactSelect" disabled>
@@ -45,7 +45,7 @@
         </div>
 
         <div style="margin-top:8px">
-          <button id="searchBtn">Buscar</button>
+          <button id="searchBtn">Buscar por RUT o ID</button>
         </div>
 
         <div class="section">
@@ -175,6 +175,6 @@
     </section>
   </main>
 
-  <script src="/app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
