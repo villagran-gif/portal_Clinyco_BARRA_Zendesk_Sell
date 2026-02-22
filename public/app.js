@@ -28,8 +28,23 @@
   async function api(path, opts={}){
     const res = await fetch(path, { ...opts, headers: { ...apiHeaders(), ...(opts.headers||{}) } });
     const data = await res.json().catch(()=> ({}));
-    if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(data?.error || `Error ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
     return data;
+  }
+
+  function formatDuplicates(label, rows = []) {
+    if (!rows.length) return "";
+    const body = rows.map((x) => {
+      const web = x?.links?.web ? `web: ${x.links.web}` : "";
+      const mobile = x?.links?.mobile ? `mobile: ${x.links.mobile}` : "";
+      return `- #${x.id} ${x.name || ""} ${web} ${mobile}`.trim();
+    }).join("\n");
+    return `\n${label}:\n${body}`;
   }
 
   // config + leads button
@@ -63,10 +78,42 @@
     $("globalStatus").className = "status err";
   }
 
+
+  function fillContactSelect(items, emptyText = "No encontrado") {
+    if (!items.length) {
+      $("contactSelect").disabled = true;
+      $("contactSelect").innerHTML = `<option value="">${emptyText}</option>`;
+      return false;
+    }
+
+    $("contactSelect").disabled = false;
+    $("contactSelect").innerHTML =
+      `<option value="">Selecciona...</option>` +
+      items.map(c => `<option value="${c.id}">${c.name || c.display_name || c.id} (id:${c.id})</option>`).join("");
+    return true;
+  }
+
+  function looksLikeRut(value){
+    const q = String(value || "").trim();
+    if (!q) return false;
+    if (/[.-]/.test(q)) return true;
+    const compact = q.replace(/\s+/g, "");
+    return compact.length >= 8 && /^[0-9kK]+$/.test(compact) && /\d/.test(compact);
+  }
+
   // -------- VIEW 1: search contacts ----------
   $("searchBtn").addEventListener("click", async () => {
-    const q = $("searchQ").value.trim();
-    $("status1").textContent = "Buscando...";
+    const qTop = $("searchQ").value.trim();
+    const qRut = $("rut1").value.trim();
+    const q = qTop || qRut;
+
+    if (!looksLikeRut(q)) {
+      $("status1").textContent = "Ingresa un RUT válido";
+      $("status1").className = "status warn";
+      return;
+    }
+
+    $("status1").textContent = "Buscando por RUT...";
     $("status1").className = "status";
     $("contactSelect").disabled = true;
     $("contactSelect").innerHTML = `<option value="">Buscando...</option>`;
@@ -74,16 +121,12 @@
     try{
       const r = await api(`/api/contacts/search?q=${encodeURIComponent(q)}`);
       const items = r.items || [];
-      if (!items.length){
-        $("contactSelect").innerHTML = `<option value="">No encontrado</option>`;
+      const found = fillContactSelect(items);
+      if (!found) {
         $("status1").textContent = "No se encontró contacto. Usa opción 2.";
         $("status1").className = "status warn";
         return;
       }
-      $("contactSelect").disabled = false;
-      $("contactSelect").innerHTML =
-        `<option value="">Selecciona...</option>` +
-        items.map(c => `<option value="${c.id}">${c.name || c.display_name || c.id} (id:${c.id})</option>`).join("");
 
       $("status1").textContent = "Selecciona el contacto y completa el trato.";
       $("status1").className = "status ok";
@@ -127,7 +170,8 @@
       $("status1").textContent = `✅ OK. deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status1").className = "status ok";
     }catch(e){
-      $("status1").textContent = e.message;
+      const extra = e.status === 409 ? formatDuplicates("deal_duplicates", e.data?.deal_duplicates) : "";
+      $("status1").textContent = `${e.message}${extra}`;
       $("status1").className = "status err";
     }
   });
@@ -171,7 +215,9 @@
       $("status2").textContent = `✅ OK. contact_id=${r.contact_id} deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status2").className = "status ok";
     }catch(e){
-      $("status2").textContent = e.message;
+      const extra = e.status === 409 ?
+        `${formatDuplicates("contact_duplicates", e.data?.contact_duplicates)}${formatDuplicates("deal_duplicates", e.data?.deal_duplicates)}` : "";
+      $("status2").textContent = `${e.message}${extra}`;
       $("status2").className = "status err";
     }
   });
@@ -258,7 +304,9 @@
       $("status5").textContent = `✅ OK. contact_id=${r.contact_id} deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status5").className = "status ok";
     }catch(e){
-      $("status5").textContent = e.message;
+      const extra = e.status === 409 ?
+        `${formatDuplicates("contact_duplicates", e.data?.contact_duplicates)}${formatDuplicates("deal_duplicates", e.data?.deal_duplicates)}` : "";
+      $("status5").textContent = `${e.message}${extra}`;
       $("status5").className = "status err";
     }
   });
