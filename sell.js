@@ -38,68 +38,111 @@ async function sellFetch(path, { method = "GET", body } = {}) {
   return json;
 }
 
-async function searchV3(index, { queryFilter, per_page = 100 } = {}) {
+// Sanea projection: NO null/undefined, y siempre {name:"..."}
+function normalizeProjection(projection) {
+  if (!projection) return undefined;
+
+  // acepta: ["name","stage_id"] o [{name:"name"}, ...]
+  const list = Array.isArray(projection) ? projection : [projection];
+
+  const clean = list
+    .map((p) => {
+      if (!p) return null;                 // evita null/undefined
+      if (typeof p === "string") {
+        const name = p.trim();
+        return name ? { name } : null;     // evita ""
+      }
+      if (typeof p === "object") {
+        const name = String(p.name || "").trim();
+        return name ? { name } : null;
+      }
+      return null;
+    })
+    .filter(Boolean);
+
+  return clean.length ? clean : undefined;
+}
+
+/**
+ * Search API v3 (batch)
+ * OJO: per_page VA dentro de data (no al lado).
+ */
+async function searchV3(index, { filter, projection, per_page = 100 } = {}) {
+  const query = {};
+  if (filter) query.filter = filter;
+
+  const proj = normalizeProjection(projection);
+  if (proj) query.projection = proj;
+
   const body = {
     items: [
       {
         data: {
-          query: {
-            filter: queryFilter
-          }
-        },
-        per_page
+          query,
+          per_page
+        }
       }
     ]
   };
 
   if (String(process.env.SELL_DEBUG || "false") === "true") {
-    console.log(`[SELL_DEBUG] /v3/${index}/search body=`, JSON.stringify(body));
-  }
-
-  const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
-  const bucket = r?.items?.[0];
-  if (bucket && bucket.successful === false) {
-    throw new Error(`Sell Search v3 ${index} failed`);
+    console.log(`[SELL_DEBUG] POST /v3/${index}/search body=`, JSON.stringify(body));
   }
   return (bucket?.items || []).map((x) => x.data).filter(Boolean);
 }
 
+  const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
+  const bucket = r?.items?.[0];
+
+  if (!bucket) return [];
+
+  if (bucket.successful === false) {
+    const err = new Error(
+      `Sell Search v3 ${index} failed: ${JSON.stringify(bucket.errors || [])}`.slice(0, 900)
+    );
+    err.details = bucket;
+    throw err;
+  }
+
+  return (bucket.items || []).map((x) => x.data).filter(Boolean);
+}
+
 async function searchContactsByRutNorm(rutNorm) {
   return searchV3("contacts", {
-    queryFilter: {
-      filter: {
-        attribute: { name: `custom_fields.contact:${CFG.contact.RUT_NORMALIZADO_ID}` },
-        parameter: { eq: String(rutNorm) }
-      }
+    filter: {
+      attribute: { name: `custom_fields.contact:${CFG.contact.RUT_NORMALIZADO_ID}` },
+      parameter: { eq: String(rutNorm) }
     },
+    // campos que usas en UI
+    projection: ["display_name"],
     per_page: 50
   });
 }
 
 async function searchDealsByRutInStages(rutNorm, stageIds = []) {
   return searchV3("deals", {
-    queryFilter: {
+    filter: {
       and: [
         {
-          filter: {
-            attribute: { name: `custom_fields.${CFG.deal.RUT_NORMALIZADO_ID}` },
-            parameter: { eq: String(rutNorm) }
-          }
+          attribute: { name: `custom_fields.${CFG.deal.RUT_NORMALIZADO_ID}` },
+          parameter: { eq: String(rutNorm) }
         },
         {
-          filter: {
-            attribute: { name: "stage_id" },
-            parameter: { any: stageIds.map(Number) }
-          }
+          attribute: { name: "stage_id" },
+          parameter: { any: stageIds.map(Number) }
         }
       ]
     },
+    // campos que usas para mostrar duplicados
+    projection: ["name", "stage_id"],
     per_page: 50
   });
 }
 
 async function getStagesByPipeline(pipelineId) {
-  const r = await sellFetch(`/v2/stages?pipeline_id=${encodeURIComponent(pipelineId)}&sort_by=position&per_page=100`);
+  const r = await sellFetch(
+    `/v2/stages?pipeline_id=${encodeURIComponent(pipelineId)}&sort_by=position&per_page=100`
+  );
   return (r?.items || []).map((x) => x.data).filter(Boolean);
 }
 
@@ -113,7 +156,10 @@ function choiceObject(fieldDef, choiceId) {
 }
 
 function tagsFromEnv() {
-  return (process.env.DEAL_TAGS || "portal,clinyco").split(",").map((s) => s.trim()).filter(Boolean);
+  return (process.env.DEAL_TAGS || "portal,clinyco")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function links(type, id) {
@@ -161,7 +207,6 @@ async function createContact(payload) {
     },
     meta: { type: "contact" }
   };
-
   const r = await sellFetch("/v2/contacts", { method: "POST", body });
   return r?.data;
 }
@@ -176,7 +221,6 @@ async function updateContact(contactId, payload) {
     },
     meta: { type: "contact" }
   };
-
   const r = await sellFetch(`/v2/contacts/${Number(contactId)}`, { method: "PUT", body });
   return r?.data;
 }
@@ -194,7 +238,6 @@ async function createDeal(payload, { contactId, stageId } = {}) {
     },
     meta: { type: "deal" }
   };
-
   const r = await sellFetch("/v2/deals", { method: "POST", body });
   return { data: r?.data, url: dealUrl(r?.data?.id) };
 }

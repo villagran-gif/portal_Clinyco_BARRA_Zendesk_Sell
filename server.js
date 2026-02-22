@@ -106,9 +106,21 @@ app.use((req, res, next) => {
 
 app.use((req, res, next) => {
   const key = process.env.PORTAL_KEY;
-  if (!key || req.path === "/health") return next();
+
+  // Sin key: no proteger nada
+  if (!key) return next();
+
+  // Siempre libre
+  if (req.path === "/health") return next();
+
+  // IMPORTANTÍSIMO:
+  // Si proteges CSS/JS/imagenes con header, el navegador NO puede enviarlo al cargar assets.
+  // Por eso solo protegemos /api/*
+  if (!req.path.startsWith("/api/")) return next();
+
   const got = req.header("x-portal-key") || "";
   if (got !== key) return res.status(401).json({ error: "Unauthorized (x-portal-key)" });
+
   return next();
 });
 
