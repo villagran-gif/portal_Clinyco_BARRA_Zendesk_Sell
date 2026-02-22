@@ -28,8 +28,23 @@
   async function api(path, opts={}){
     const res = await fetch(path, { ...opts, headers: { ...apiHeaders(), ...(opts.headers||{}) } });
     const data = await res.json().catch(()=> ({}));
-    if (!res.ok) throw new Error(data?.error || `Error ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(data?.error || `Error ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
     return data;
+  }
+
+  function formatDuplicates(label, rows = []) {
+    if (!rows.length) return "";
+    const body = rows.map((x) => {
+      const web = x?.links?.web ? `web: ${x.links.web}` : "";
+      const mobile = x?.links?.mobile ? `mobile: ${x.links.mobile}` : "";
+      return `- #${x.id} ${x.name || ""} ${web} ${mobile}`.trim();
+    }).join("\n");
+    return `\n${label}:\n${body}`;
   }
 
   // config + leads button
@@ -127,7 +142,8 @@
       $("status1").textContent = `✅ OK. deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status1").className = "status ok";
     }catch(e){
-      $("status1").textContent = e.message;
+      const extra = e.status === 409 ? formatDuplicates("deal_duplicates", e.data?.deal_duplicates) : "";
+      $("status1").textContent = `${e.message}${extra}`;
       $("status1").className = "status err";
     }
   });
@@ -171,7 +187,9 @@
       $("status2").textContent = `✅ OK. contact_id=${r.contact_id} deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status2").className = "status ok";
     }catch(e){
-      $("status2").textContent = e.message;
+      const extra = e.status === 409 ?
+        `${formatDuplicates("contact_duplicates", e.data?.contact_duplicates)}${formatDuplicates("deal_duplicates", e.data?.deal_duplicates)}` : "";
+      $("status2").textContent = `${e.message}${extra}`;
       $("status2").className = "status err";
     }
   });
@@ -258,7 +276,9 @@
       $("status5").textContent = `✅ OK. contact_id=${r.contact_id} deal_id=${r.deal_id}\n${r.deal_url || ""}`;
       $("status5").className = "status ok";
     }catch(e){
-      $("status5").textContent = e.message;
+      const extra = e.status === 409 ?
+        `${formatDuplicates("contact_duplicates", e.data?.contact_duplicates)}${formatDuplicates("deal_duplicates", e.data?.deal_duplicates)}` : "";
+      $("status5").textContent = `${e.message}${extra}`;
       $("status5").className = "status err";
     }
   });
