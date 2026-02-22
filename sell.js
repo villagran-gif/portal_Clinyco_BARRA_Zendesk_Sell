@@ -38,17 +38,16 @@ async function sellFetch(path, { method = "GET", body } = {}) {
   return json;
 }
 
-async function searchV3(index, { queryFilter, projectionNames = ["id", "name", "display_name", "stage_id"], per_page = 100 } = {}) {
-  const projection = projectionNames.map((name) => ({ name }));
+async function searchV3(index, { queryFilter, projectionNames = [], per_page = 100 } = {}) {
+  const query = { filter: queryFilter };
+  if (projectionNames.length > 0) {
+    query.projection = projectionNames.map((name) => ({ name }));
+  }
+
   const body = {
     items: [
       {
-        data: {
-          query: {
-            filter: queryFilter,
-            projection
-          }
-        },
+        data: { query },
         per_page
       }
     ]
@@ -63,10 +62,12 @@ async function searchContactsByRutNorm(rutNorm) {
   return searchV3("contacts", {
     queryFilter: {
       filter: {
-        attribute: { name: `custom_fields.${CFG.contact.RUT_NORMALIZADO_ID}` },
+        attribute: { name: `custom_fields.contact:${CFG.contact.RUT_NORMALIZADO_ID}` },
         parameter: { eq: String(rutNorm) }
       }
-    }
+    },
+    projectionNames: ["id", "display_name"],
+    per_page: 50
   });
 }
 
@@ -87,7 +88,9 @@ async function searchDealsByRutInStages(rutNorm, stageIds = []) {
           }
         }
       ]
-    }
+    },
+    projectionNames: ["id", "name", "stage_id", "contact_id"],
+    per_page: 50
   });
 }
 

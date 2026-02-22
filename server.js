@@ -8,6 +8,7 @@ const {
   getCustomFields,
   searchContacts,
   searchContactsByRutNorm,
+  searchV3,
   searchDealsByRutInStages,
   getStagesByPipeline,
   createContact,
@@ -160,6 +161,38 @@ app.get("/api/contacts/search", async (req, res) => {
       email: c.email,
       phone: c.phone,
       mobile: c.mobile
+    }))
+  });
+});
+
+
+app.get("/api/contacts/search-rut", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  if (!q) return res.status(400).json({ error: "Falta q" });
+
+  const rutNormalizado = normalizeRut(q);
+  if (!rutNormalizado) return res.status(400).json({ error: "RUT vacío" });
+
+  if (String(process.env.RUT_VALIDATE || "false") === "true" && !validRutMod11(rutNormalizado)) {
+    return res.status(400).json({ error: "RUT inválido" });
+  }
+
+  const items = await searchV3("contacts", {
+    queryFilter: {
+      filter: {
+        attribute: { name: `custom_fields.contact:${CFG.contact.RUT_NORMALIZADO_ID}` },
+        parameter: { eq: rutNormalizado }
+      }
+    },
+    projectionNames: ["id", "display_name"],
+    per_page: 100
+  });
+
+  return res.json({
+    items: items.map((c) => ({
+      id: c.id,
+      name: c.display_name || c.name || "",
+      links: links("contact", c.id)
     }))
   });
 });
