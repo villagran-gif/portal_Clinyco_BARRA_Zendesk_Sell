@@ -6,9 +6,7 @@ const path = require("path");
 const CFG = require("./sell_config");
 const {
   getCustomFields,
-  searchContacts,
   searchContactsByRutNorm,
-  searchV3,
   searchDealsByRutInStages,
   getStagesByPipeline,
   createContact,
@@ -150,44 +148,18 @@ app.get("/api/options", async (_req, res) => {
   res.json(data);
 });
 
-app.get("/api/contacts/search", async (req, res) => {
-  const q = String(req.query.q || "").trim();
-  if (!q) return res.status(400).json({ error: "Falta q" });
-  const items = await searchContacts(q);
-  return res.json({
-    items: items.map((c) => ({
-      id: c.id,
-      name: c.name || c.display_name || `${c.first_name || ""} ${c.last_name || ""}`.trim(),
-      email: c.email,
-      phone: c.phone,
-      mobile: c.mobile
-    }))
-  });
-});
+function isRutLike(value) {
+  return /^\d+[0-9K]$/.test(String(value || "").trim());
+}
 
-
-app.get("/api/contacts/search-rut", async (req, res) => {
+async function handleSearchByRut(req, res) {
   const q = String(req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "Falta q" });
 
   const rutNormalizado = normalizeRut(q);
-  if (!rutNormalizado) return res.status(400).json({ error: "RUT vacío" });
+  if (!isRutLike(rutNormalizado)) return res.json({ items: [] });
 
-  if (String(process.env.RUT_VALIDATE || "false") === "true" && !validRutMod11(rutNormalizado)) {
-    return res.status(400).json({ error: "RUT inválido" });
-  }
-
-  const items = await searchV3("contacts", {
-    queryFilter: {
-      filter: {
-        attribute: { name: `custom_fields.contact:${CFG.contact.RUT_NORMALIZADO_ID}` },
-        parameter: { eq: rutNormalizado }
-      }
-    },
-    projectionNames: ["id", "display_name"],
-    per_page: 100
-  });
-
+  const items = await searchContactsByRutNorm(rutNormalizado);
   return res.json({
     items: items.map((c) => ({
       id: c.id,
@@ -195,7 +167,10 @@ app.get("/api/contacts/search-rut", async (req, res) => {
       links: links("contact", c.id)
     }))
   });
-});
+}
+
+app.get("/api/contacts/search", handleSearchByRut);
+app.get("/api/contacts/search-rut", handleSearchByRut);
 
 app.post("/api/deals/create", async (req, res) => {
   const b = req.body || {};

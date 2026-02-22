@@ -103,8 +103,17 @@
 
   // -------- VIEW 1: search contacts ----------
   $("searchBtn").addEventListener("click", async () => {
-    const q = $("searchQ").value.trim();
-    $("status1").textContent = "Buscando...";
+    const qTop = $("searchQ").value.trim();
+    const qRut = $("rut1").value.trim();
+    const q = qTop || qRut;
+
+    if (!looksLikeRut(q)) {
+      $("status1").textContent = "Ingresa un RUT válido";
+      $("status1").className = "status warn";
+      return;
+    }
+
+    $("status1").textContent = "Buscando por RUT...";
     $("status1").className = "status";
     $("contactSelect").disabled = true;
     $("contactSelect").innerHTML = `<option value="">Buscando...</option>`;

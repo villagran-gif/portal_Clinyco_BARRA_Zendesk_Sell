@@ -40,8 +40,14 @@ async function sellFetch(path, { method = "GET", body } = {}) {
 
 async function searchV3(index, { queryFilter, projectionNames = [], per_page = 100 } = {}) {
   const query = { filter: queryFilter };
-  if (projectionNames.length > 0) {
-    query.projection = projectionNames.map((name) => ({ name }));
+  const projection = [];
+
+  for (const name of projectionNames) {
+    if (name) projection.push({ name });
+  }
+
+  if (projection.length > 0) {
+    query.projection = projection;
   }
 
   const body = {
@@ -53,9 +59,12 @@ async function searchV3(index, { queryFilter, projectionNames = [], per_page = 1
     ]
   };
 
+  if (String(process.env.SELL_DEBUG || "false") === "true") {
+    console.log(`[SELL_DEBUG] /v3/${index}/search body=`, JSON.stringify(body));
+  }
+
   const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
-  const bucket = r?.items?.[0];
-  return (bucket?.items || []).map((x) => x.data).filter(Boolean);
+  return (r?.items?.[0]?.items || []).map((x) => x.data).filter(Boolean);
 }
 
 async function searchContactsByRutNorm(rutNorm) {
@@ -142,25 +151,6 @@ function contactUrl(id) {
   return links("contact", id).web;
 }
 
-async function searchContacts(q) {
-  const query = String(q || "").trim();
-  if (!query) return [];
-  const perPage = 20;
-
-  if (query.includes("@")) {
-    const r = await sellFetch(`/v2/contacts?email=${encodeURIComponent(query)}&per_page=${perPage}`);
-    return (r?.items || []).map((x) => x.data).filter(Boolean);
-  }
-
-  let r = await sellFetch(`/v2/contacts?phone=${encodeURIComponent(query)}&per_page=${perPage}`);
-  let items = (r?.items || []).map((x) => x.data).filter(Boolean);
-  if (items.length) return items;
-
-  r = await sellFetch(`/v2/contacts?mobile=${encodeURIComponent(query)}&per_page=${perPage}`);
-  items = (r?.items || []).map((x) => x.data).filter(Boolean);
-  return items;
-}
-
 async function createContact(payload) {
   const body = {
     data: {
@@ -223,7 +213,6 @@ module.exports = {
   getCustomFields,
   choiceObject,
   links,
-  searchContacts,
   createContact,
   updateContact,
   createDeal,
