@@ -38,22 +38,15 @@ async function sellFetch(path, { method = "GET", body } = {}) {
   return json;
 }
 
-async function searchV3(index, { queryFilter, projectionNames = [], per_page = 100 } = {}) {
-  const query = { filter: queryFilter };
-  const projection = [];
-
-  for (const name of projectionNames) {
-    if (name) projection.push({ name });
-  }
-
-  if (projection.length > 0) {
-    query.projection = projection;
-  }
-
+async function searchV3(index, { queryFilter, per_page = 100 } = {}) {
   const body = {
     items: [
       {
-        data: { query },
+        data: {
+          query: {
+            filter: queryFilter
+          }
+        },
         per_page
       }
     ]
@@ -64,7 +57,11 @@ async function searchV3(index, { queryFilter, projectionNames = [], per_page = 1
   }
 
   const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
-  return (r?.items?.[0]?.items || []).map((x) => x.data).filter(Boolean);
+  const bucket = r?.items?.[0];
+  if (bucket && bucket.successful === false) {
+    throw new Error(`Sell Search v3 ${index} failed`);
+  }
+  return (bucket?.items || []).map((x) => x.data).filter(Boolean);
 }
 
 async function searchContactsByRutNorm(rutNorm) {
@@ -75,7 +72,6 @@ async function searchContactsByRutNorm(rutNorm) {
         parameter: { eq: String(rutNorm) }
       }
     },
-    projectionNames: ["id", "display_name"],
     per_page: 50
   });
 }
@@ -98,7 +94,6 @@ async function searchDealsByRutInStages(rutNorm, stageIds = []) {
         }
       ]
     },
-    projectionNames: ["id", "name", "stage_id", "contact_id"],
     per_page: 50
   });
 }

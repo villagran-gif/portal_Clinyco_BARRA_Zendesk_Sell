@@ -154,7 +154,7 @@ function isRutLike(value) {
 
 async function handleSearchByRut(req, res) {
   const q = String(req.query.q || "").trim();
-  if (!q) return res.status(400).json({ error: "Falta q" });
+  if (!q) return res.json({ items: [] });
 
   const rutNormalizado = normalizeRut(q);
   if (!isRutLike(rutNormalizado)) return res.json({ items: [] });
