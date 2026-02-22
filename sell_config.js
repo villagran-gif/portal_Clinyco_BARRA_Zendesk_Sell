@@ -1,19 +1,28 @@
 module.exports = {
   contact: {
-    RUT_ID: 5883525,        // "RUT o ID"
-    PREVISION_ID: 6373567,  // "Previsión" (list)
-    TELEFONO_ID: 5862996,   // "Teléfono" (phone)
-    CORREO_ID: 5862966,     // "Correo electrónico" (email)
-    CIUDAD_ID: 5862997,     // "Ciudad" (string)
-    AGENTE_ID: 6336406      // "AGENTE" (string) opcional
+    RUT_NORMALIZADO_ID: 6265931,
+    RUT_LEGACY_ID: 5883525,
+    PREVISION_ID: 6373567,
+    BIRTHDATE_ID: 5863844,
+    TELEFONO_ID: 5862996,
+    CORREO_ID: 5862966,
+    CIUDAD_ID: 5862997,
+    AGENTE_ID: 6336406
   },
   deal: {
-    RUT_ID: 2540090,        // "RUT o ID"
-    CIRUJANO_ID: 2523888,   // "CIRUJANO BARIÁTRICO" (list)
-    IMC_TEXT_ID: 1291633,   // "IMC" (string)
-    IMC_NUM_ID: 2567322,    // "IMC." (number)
-    INTERES_ID: 1291635,    // "Interés" (string)
-    TRAMO_ID: 2758483,      // "Tramo/Modalidad" (list)
-    URL_MEDINET_ID: 2618053 // "URL-MEDINET" (url)
+    RUT_NORMALIZADO_ID: 2759433,
+    RUT_LEGACY_ID: 2540090,
+    PREVISION_ID: 2761582,
+    BIRTHDATE_ID: 2618055,
+    TRAMO_ID: 2758483,
+    CIRUJANO_ID: 2523888,
+    IMC_TEXT_ID: 1291633,
+    IMC_NUM_ID: 2567322,
+    INTERES_ID: 1291635,
+    URL_MEDINET_ID: 2618053
+  },
+  bariatrica: {
+    PIPELINE_ID: 1290779,
+    STAGE_CANDIDATO_ID: 10693252
   }
 };
