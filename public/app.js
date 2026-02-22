@@ -137,6 +137,44 @@
     }
   });
 
+  $("searchRutBtn").addEventListener("click", async () => {
+    const qTop = $("searchQ").value.trim();
+    const qRut = $("rut1").value.trim();
+
+    let q = "";
+    if (qTop && looksLikeRut(qTop)) q = qTop;
+    else if (qRut) q = qRut;
+    else if (qTop) q = qTop;
+
+    if (!q) {
+      $("status1").textContent = "Ingresa RUT o ID";
+      $("status1").className = "status warn";
+      return;
+    }
+
+    $("status1").textContent = "Buscando por RUT...";
+    $("status1").className = "status";
+    $("contactSelect").disabled = true;
+    $("contactSelect").innerHTML = `<option value="">Buscando...</option>`;
+
+    try {
+      const r = await api(`/api/contacts/search-rut?q=${encodeURIComponent(q)}`);
+      const items = r.items || [];
+      const found = fillContactSelect(items, "No encontrado por RUT");
+      if (!found) {
+        $("status1").textContent = looksLikeRut(q) ? "No se encontraron contactos por RUT." : "La búsqueda no parece RUT; sin resultados.";
+        $("status1").className = "status warn";
+        return;
+      }
+      $("status1").textContent = "Selecciona el contacto y completa el trato.";
+      $("status1").className = "status ok";
+    } catch (e) {
+      $("contactSelect").innerHTML = `<option value="">Error</option>`;
+      $("status1").textContent = e.message;
+      $("status1").className = "status err";
+    }
+  });
+
   // create deal existing contact
   $("createDealBtn").addEventListener("click", async () => {
     const contactId = $("contactSelect").value;

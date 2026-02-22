@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: portal-clinyco
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # - key: ZENDESK_SELL_TOKEN
+      #   sync: false   # te lo pedirá en el dashboard (secreto)

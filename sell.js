@@ -88,6 +88,8 @@ async function searchV3(index, { filter, projection, per_page = 100 } = {}) {
   if (String(process.env.SELL_DEBUG || "false") === "true") {
     console.log(`[SELL_DEBUG] POST /v3/${index}/search body=`, JSON.stringify(body));
   }
+  return (bucket?.items || []).map((x) => x.data).filter(Boolean);
+}
 
   const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
   const bucket = r?.items?.[0];
