@@ -43,22 +43,24 @@ function normalizeProjection(projection) {
   if (!projection) return undefined;
 
   // acepta: ["name","stage_id"] o [{name:"name"}, ...]
-  const list = Array.isArray(projection) ? projection : [projection];
+  const list = Array.isArray(projection) ? Array.from(projection) : [projection];
 
-  const clean = list
-    .map((p) => {
-      if (!p) return null;                 // evita null/undefined
-      if (typeof p === "string") {
-        const name = p.trim();
-        return name ? { name } : null;     // evita ""
-      }
-      if (typeof p === "object") {
-        const name = String(p.name || "").trim();
-        return name ? { name } : null;
-      }
-      return null;
-    })
-    .filter(Boolean);
+  const clean = list.reduce((acc, p) => {
+    if (!p) return acc; // evita null/undefined (incluye holes de arrays)
+
+    if (typeof p === "string") {
+      const name = p.trim();
+      if (name) acc.push({ name });
+      return acc;
+    }
+
+    if (typeof p === "object") {
+      const name = String(p.name || "").trim();
+      if (name) acc.push({ name });
+    }
+
+    return acc;
+  }, []);
 
   return clean.length ? clean : undefined;
 }
@@ -88,9 +90,6 @@ async function searchV3(index, { filter, projection, per_page = 100 } = {}) {
   if (String(process.env.SELL_DEBUG || "false") === "true") {
     console.log(`[SELL_DEBUG] POST /v3/${index}/search body=`, JSON.stringify(body));
   }
-  return (bucket?.items || []).map((x) => x.data).filter(Boolean);
-}
-
   const r = await sellFetch(`/v3/${index}/search`, { method: "POST", body });
   const bucket = r?.items?.[0];
 
